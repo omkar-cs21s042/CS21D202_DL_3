@@ -27,6 +27,7 @@ EOS_token = 1
 MAX_LENGTH = 0
 
 
+# command line arguments
 
 CLI=argparse.ArgumentParser()
 CLI.add_argument(
@@ -129,6 +130,8 @@ CLI.add_argument(
 # parse the command line
 args = CLI.parse_args()
 
+#sweep config
+
 sweep_config = {
   'name': 'Test_run',
   'method': 'bayes',
@@ -179,8 +182,7 @@ sweep_config = {
 
 
 
-
-
+# Encoder class
 class EncoderRNN(nn.Module):
     def __init__(self, input_size, hidden_sizes, inputEmbedding, cell_type, dropout):
         super(CustomRNN, self).__init__()
@@ -224,14 +226,15 @@ class EncoderRNN(nn.Module):
 
 class BeamSearchNode:
     def __init__(self, hiddenstate, previousNode, letterId, logProb, length):
-        self.h = hiddenstate
+        self.h = hiddenstate 
         self.prevNode = previousNode
         self.letterid = letterId
-        self.logp = logProb
+        self.logp = logProb   
         self.length = length
 
 
 class BahdanauAttention(nn.Module):
+    # source pytorch documentation
     def __init__(self, hidden_size):
         super(BahdanauAttention, self).__init__()
         self.Wa = nn.Linear(hidden_size, hidden_size)
@@ -252,10 +255,13 @@ class AttnDecoderRNN(nn.Module):
     def __init__(self, output_size, hidden_sizes, outputEmbedding, cell_type, dropout, attention):
         super(AttnDecoderRNN, self).__init__()
 
+        # setting attention flag
         self.isAttnEnabled = attention
 
+        # output embedding 
         self.embedding = nn.Embedding(output_size, outputEmbedding)
 
+        # adding attention layer if flag is set
         if self.isAttnEnabled:
             self.attention = BahdanauAttention(outputEmbedding)
         
@@ -264,7 +270,7 @@ class AttnDecoderRNN(nn.Module):
         for i in range(len(hidden_sizes)):
             if i == 0:
                 if self.isAttnEnabled:
-                    layer_input_size = outputEmbedding * 2 # Input size 2 times because attention is concat
+                    layer_input_size = outputEmbedding * 2 # Input size 2 times because attention is concatinated
                 else:
                     layer_input_size = outputEmbedding
             else:
@@ -285,8 +291,10 @@ class AttnDecoderRNN(nn.Module):
     def forward(self, encoder_outputs, encoder_hidden, target_tensor=None, beam_width):
 
         if target_tensor is not None:
+            # usedd for training
             return self.training_forward(encoder_outputs, decoder_hidden, target_tensor)
         else:
+            # used for validation and testing
             return self.inference_forward(encoder_outputs, encoder_hidden, beam_width)
 
 
@@ -312,11 +320,13 @@ class AttnDecoderRNN(nn.Module):
 
     def training_forward(encoder_outputs, encoder_hidden, target_tensor):
         batch_size = encoder_outputs.size(0)
+        # initially add sos token
         decoder_input = torch.empty(batch_size, 1, dtype=torch.long, device=device).fill_(SOS_token)
         decoder_hidden = encoder_hidden
         decoder_outputs = []
         attentions = []
 
+        # keep generating sequence till we reach max_length
         for i in range(MAX_LENGTH):
             decoder_output, decoder_hidden, attn_weights = self.forward_step(
                 decoder_input, decoder_hidden, encoder_outputs
@@ -424,6 +434,7 @@ class AttnDecoderRNN(nn.Module):
 
 
 def read_data(path, inputLanguage, outputLanguage):
+    # function to read csv file
   pairs = []
   with open(path, "r", encoding="utf-8") as f:
       rows = f.read().split("\n")
@@ -438,7 +449,7 @@ def read_data(path, inputLanguage, outputLanguage):
   return inputLanguage, outputLanguage, pairs
 
 
-
+# this class is like vocabulary
 class Lang:
     def __init__(self, name):
         self.name = name
@@ -461,19 +472,22 @@ class Lang:
             self.letter2count[letter] += 1
 
 def indexesFromWord(lang, word):
+    # self explanatory helper function
     return [lang.letter2index[letter] for letter in word]
 
 def wordFromIndexes(lang, word):
+    # self explanatory helper function
     return ''.join([lang.index2letter[index] for index in word])
 
 
 def tensorFromWord(lang, word):
+    # self explanatory helper function
     indexes = indexesFromSentence(lang, word)
     indexes.append(EOS_token)
     return torch.tensor(indexes, dtype=torch.long, device=device).view(1, -1)
 
 def get_dataloader(batch_size, pairs, inputLanguage, outputLanguage):
-
+    # create dataloader - self explanatory
     n = len(pairs)
     input_ids = np.zeros((n, MAX_LENGTH), dtype=np.int32)
     target_ids = np.zeros((n, MAX_LENGTH), dtype=np.int32)
@@ -504,9 +518,12 @@ def train_epoch(dataloader, encoder, decoder, encoder_optimizer, decoder_optimiz
         encoder_optimizer.zero_grad()
         decoder_optimizer.zero_grad()
 
+        # pass input to  encoder
         encoder_outputs, encoder_hidden = encoder(input_tensor)
+        # pass output to decoder
         decoder_outputs, _, _ = decoder(encoder_outputs, encoder_hidden, target_tensor)
 
+        #loss function
         loss = criterion(
             decoder_outputs.view(-1, decoder_outputs.size(-1)),
             target_tensor.view(-1)
@@ -531,8 +548,10 @@ def train_epoch(dataloader, encoder, decoder, encoder_optimizer, decoder_optimiz
 
 
 def eval(encoder, decoder, dataloader, writeToCSV):
-    global outCSV
+    global outCSV   # file where predictions will be written
     total_correct = 0
+    # this function performs inference on validation as well as test
+    # also uses beam search
     with torch.no_grad():
         for data in dataloader:
             input_tensor, target_tensor = data
@@ -562,6 +581,7 @@ def eval(encoder, decoder, dataloader, writeToCSV):
 
 
 def train(train_dataloader, val_dataloader, encoder, decoder, n_epochs, learning_rate, opt):
+    # setting optimizer
     if opt == "adam":
         encoder_optimizer = optim.Adam(encoder.parameters(), lr=learning_rate)
         decoder_optimizer = optim.Adam(decoder.parameters(), lr=learning_rate)
@@ -577,6 +597,7 @@ def train(train_dataloader, val_dataloader, encoder, decoder, n_epochs, learning
     for epoch in range(1, n_epochs + 1):
         train_loss, train_accuracy = train_epoch(train_dataloader, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
         val_accuracy, _ = eval(encoder, decoder, val_dataloader, False)
+        print("Val accuracy = " + str(val_accuracy))
 
 def test(test_dataloader, encoder, decoder):
     test_accuracy, decoded_outputs = eval(encoder, decoder, test_dataloader, True)
@@ -622,4 +643,6 @@ def train_wandb():
 inputLanguage = Lang("English")
 outputLanguage = Lang("Hindi")
 outCSV = pd.DataFrame(columns=['a', 'b', 'c'])
+sweep_id = wandb.sweep(sweep_config,entity=args.entity,project=args.project)
+wandb.agent(sweep_id, train_wandb , count=1)
 
