@@ -597,7 +597,7 @@ def train(train_dataloader, val_dataloader, encoder, decoder, n_epochs, learning
     for epoch in range(1, n_epochs + 1):
         train_loss, train_accuracy = train_epoch(train_dataloader, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion)
         val_accuracy, _ = eval(encoder, decoder, val_dataloader, False)
-        print("Val accuracy = " + str(val_accuracy))
+        wandb.log({"val_accuracy": val_accuracy})
 
 def test(test_dataloader, encoder, decoder):
     test_accuracy, decoded_outputs = eval(encoder, decoder, test_dataloader, True)
@@ -642,7 +642,7 @@ def train_wandb():
 
 inputLanguage = Lang("English")
 outputLanguage = Lang("Hindi")
-outCSV = pd.DataFrame(columns=['a', 'b', 'c'])
+outCSV = pd.DataFrame(columns=['Input', 'Prediction', 'Ground Truth'])
 sweep_id = wandb.sweep(sweep_config,entity=args.entity,project=args.project)
 wandb.agent(sweep_id, train_wandb , count=1)
 
